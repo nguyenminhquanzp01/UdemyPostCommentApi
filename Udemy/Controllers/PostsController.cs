@@ -173,49 +173,6 @@ public class PostsController(
     }
 
     /// <summary>
-    /// Gets comments on a post.
-    /// </summary>
-    /// <param name="postId">The post ID.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A list of top-level comments.</returns>
-    [HttpGet("{postId}/comments")]
-    [AllowAnonymous]
-    public async Task<ActionResult<IList<CommentDto>>> GetPostComments(
-        Guid postId,
-        CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("Retrieving comments for post {PostId}", postId);
-
-        var comments = await _commentService.GetPostCommentsAsync(postId, cancellationToken).ConfigureAwait(false);
-        return Ok(comments);
-    }
-
-    /// <summary>
-    /// Gets comment tree for a post (hierarchical structure with caching).
-    /// </summary>
-    /// <param name="postId">The post ID.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A hierarchical tree of comments.</returns>
-    [HttpGet("{postId}/comments/tree")]
-    [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<CommentTreeDto>>> GetPostCommentTree(
-        Guid postId,
-        CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("Retrieving comment tree for post {PostId}", postId);
-
-        try
-        {
-            var commentTree = await _commentService.GetCommentTreeForPostIdAsync(postId, cancellationToken).ConfigureAwait(false);
-            return Ok(commentTree);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return NotFound(new { message = ex.Message });
-        }
-    }
-
-    /// <summary>
     /// Creates a new comment on a post.
     /// </summary>
     /// <param name="postId">The post ID.</param>
@@ -240,7 +197,7 @@ public class PostsController(
         try
         {
             var comment = await _commentService.CreateCommentAsync(postId, parsedUserId, request, cancellationToken).ConfigureAwait(false);
-            return CreatedAtAction(nameof(GetComment), new { postId, commentId = comment.Id }, comment);
+            return CreatedAtAction("GetComment", "Comments", new { commentId = comment.Id }, comment);
         }
         catch (InvalidOperationException ex)
         {
@@ -248,104 +205,4 @@ public class PostsController(
         }
     }
 
-    /// <summary>
-    /// Gets a specific comment.
-    /// </summary>
-    /// <param name="postId">The post ID.</param>
-    /// <param name="commentId">The comment ID.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The comment details.</returns>
-    [HttpGet("{postId}/comments/{commentId}")]
-    [AllowAnonymous]
-    public async Task<ActionResult<CommentDto>> GetComment(
-        Guid postId,
-        Guid commentId,
-        CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("Retrieving comment {CommentId} from post {PostId}", commentId, postId);
-
-        var comment = await _commentService.GetCommentAsync(commentId, cancellationToken).ConfigureAwait(false);
-        if (comment == null || comment.PostId != postId)
-        {
-            return NotFound();
-        }
-
-        return Ok(comment);
-    }
-
-    /// <summary>
-    /// Updates a comment.
-    /// </summary>
-    /// <param name="postId">The post ID.</param>
-    /// <param name="commentId">The comment ID.</param>
-    /// <param name="request">The update comment request.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The updated comment.</returns>
-    [HttpPut("{postId}/comments/{commentId}")]
-    [Authorize]
-    public async Task<ActionResult<CommentDto>> UpdateComment(
-        Guid postId,
-        Guid commentId,
-        [FromBody] UpdateCommentRequest request,
-        CancellationToken cancellationToken)
-    {
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!Guid.TryParse(userId, out var parsedUserId))
-        {
-            return Unauthorized();
-        }
-
-        _logger.LogInformation("Updating comment {CommentId} on post {PostId} by user {UserId}", commentId, postId, parsedUserId);
-
-        try
-        {
-            var comment = await _commentService.UpdateCommentAsync(commentId, parsedUserId, request, cancellationToken).ConfigureAwait(false);
-            return Ok(comment);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return NotFound(new { message = ex.Message });
-        }
-    }
-
-    /// <summary>
-    /// Deletes a comment.
-    /// </summary>
-    /// <param name="postId">The post ID.</param>
-    /// <param name="commentId">The comment ID.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>No content.</returns>
-    [HttpDelete("{postId}/comments/{commentId}")]
-    [Authorize]
-    public async Task<IActionResult> DeleteComment(
-        Guid postId,
-        Guid commentId,
-        CancellationToken cancellationToken)
-    {
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!Guid.TryParse(userId, out var parsedUserId))
-        {
-            return Unauthorized();
-        }
-
-        _logger.LogInformation("Deleting comment {CommentId} from post {PostId} by user {UserId}", commentId, postId, parsedUserId);
-
-        try
-        {
-            await _commentService.DeleteCommentAsync(commentId, parsedUserId, cancellationToken).ConfigureAwait(false);
-            return NoContent();
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return NotFound(new { message = ex.Message });
-        }
-    }
 }
