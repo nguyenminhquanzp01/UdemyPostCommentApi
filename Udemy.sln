@@ -2,6 +2,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Udemy", "Udemy\Udemy.csproj", "{3916D384-E94B-4BDB-BB1A-C687F0536AFB}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Udemy.Tests", "Udemy.Tests\Udemy.Tests.csproj", "{4A5C6D7E-8F9G-5H6I-CC2B-D78E1F64736BFC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +14,9 @@ Global
 		{3916D384-E94B-4BDB-BB1A-C687F0536AFB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3916D384-E94B-4BDB-BB1A-C687F0536AFB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3916D384-E94B-4BDB-BB1A-C687F0536AFB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4A5C6D7E-8F9G-5H6I-CC2B-D78E1F64736BFC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4A5C6D7E-8F9G-5H6I-CC2B-D78E1F64736BFC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4A5C6D7E-8F9G-5H6I-CC2B-D78E1F64736BFC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4A5C6D7E-8F9G-5H6I-CC2B-D78E1F64736BFC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
