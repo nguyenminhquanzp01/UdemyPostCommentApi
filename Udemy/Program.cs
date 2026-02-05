@@ -7,11 +7,13 @@ using StackExchange.Redis;
 using Udemy.Application.Mapping;
 using Udemy.Application.Services;
 using Udemy.Application.Validators;
+using Udemy.Application.Repositories;
 using Udemy.Domain.Data;
 using Udemy.Infrastructure.Authorization;
 using Udemy.Infrastructure.Middleware;
 using Udemy.Infrastructure.Filters;
 using Udemy.Infrastructure.Extensions;
+using Udemy.Infrastructure.Repositories;
 using FluentValidation;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -78,6 +80,11 @@ builder.Services.AddAuthorization(options =>
 });
 
 builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, OwnerAuthorizationHandler>();
+
+// Add Repositories
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IPostRepository, PostRepository>();
+builder.Services.AddScoped<ICommentRepository, CommentRepository>();
 
 // Add Services
 builder.Services.AddScoped<ITokenService, TokenService>();

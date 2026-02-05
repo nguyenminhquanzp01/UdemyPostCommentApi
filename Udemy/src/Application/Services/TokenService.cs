@@ -109,7 +109,7 @@ public class TokenService(IConfiguration configuration, ILogger<TokenService> lo
 
             return principal;
         }
-        catch (SecurityTokenException ex)
+        catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to validate token");
             return null;

@@ -2,7 +2,7 @@ namespace Udemy.Application.Services;
 
 using AutoMapper;
 using Udemy.Application.DTOs;
-using Udemy.Domain.Data;
+using Udemy.Application.Repositories;
 using Udemy.Domain.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,12 +10,12 @@ using Microsoft.EntityFrameworkCore;
 /// Service implementation for post operations.
 /// </summary>
 public class PostService(
-    AppDbContext dbContext,
+    IPostRepository postRepository,
     ICacheService cacheService,
     IMapper mapper,
     ILogger<PostService> logger) : IPostService
 {
-    private readonly AppDbContext _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+    private readonly IPostRepository _postRepository = postRepository ?? throw new ArgumentNullException(nameof(postRepository));
     private readonly ICacheService _cacheService = cacheService ?? throw new ArgumentNullException(nameof(cacheService));
     private readonly IMapper _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
     private readonly ILogger<PostService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -37,8 +37,7 @@ public class PostService(
             UserId = userId
         };
 
-        _dbContext.Posts.Add(post);
-        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        post = await _postRepository.AddAsync(post, cancellationToken).ConfigureAwait(false);
 
         // Invalidate list cache
         await _cacheService.RemoveAsync(PostListCacheKey, cancellationToken).ConfigureAwait(false);
@@ -61,11 +60,7 @@ public class PostService(
             return cachedPost;
         }
 
-        var post = await _dbContext.Posts
-            .Include(p => p.User)
-            .Include(p => p.Comments.Where(c => c.ParentId == null))
-            .ThenInclude(c => c.Replies)
-            .FirstOrDefaultAsync(p => p.Id == postId, cancellationToken)
+        var post = await _postRepository.GetWithCommentsAsync(postId, cancellationToken)
             .ConfigureAwait(false);
 
         if (post == null)
@@ -92,15 +87,10 @@ public class PostService(
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(page, nameof(page));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pageSize, nameof(pageSize));
 
-        var query = _dbContext.Posts
-            .Include(p => p.User)
-            .OrderByDescending(p => p.CreatedAt);
+        var (postsData, totalCount) = await _postRepository.GetAllWithPaginationAsync(page, pageSize, cancellationToken)
+            .ConfigureAwait(false);
 
-        var totalCount = await query.CountAsync(cancellationToken).ConfigureAwait(false);
-
-        var posts = await query
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+        var posts = postsData
             .Select(p => new PostDto
             {
                 Id = p.Id,
@@ -115,8 +105,7 @@ public class PostService(
                 UpdatedAt = p.UpdatedAt,
                 CommentCount = p.Comments.Count
             })
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+            .ToList();
 
         _logger.LogInformation("Retrieved {PostCount} posts (Page {Page}, PageSize {PageSize}, Total {Total})",
             posts.Count, page, pageSize, totalCount);
@@ -132,19 +121,12 @@ public class PostService(
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(page, nameof(page));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pageSize, nameof(pageSize));
 
-        var query = _dbContext.Posts
-            .Where(p => p.UserId == userId)
-            .Include(p => p.User)
-            .OrderByDescending(p => p.CreatedAt);
-
-        var totalCount = await query.CountAsync(cancellationToken).ConfigureAwait(false);
-
-        var posts = await query
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(p => _mapper.Map<PostDto>(p))
-            .ToListAsync(cancellationToken)
+        var (postsData, totalCount) = await _postRepository.GetByUserIdAsync(userId, page, pageSize, cancellationToken)
             .ConfigureAwait(false);
+
+        var posts = postsData
+            .Select(p => _mapper.Map<PostDto>(p))
+            .ToList();
 
         _logger.LogInformation("Retrieved {PostCount} posts for user {UserId}", posts.Count, userId);
 
@@ -158,9 +140,7 @@ public class PostService(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var post = await _dbContext.Posts
-            .Include(p => p.User)
-            .FirstOrDefaultAsync(p => p.Id == postId, cancellationToken)
+        var post = await _postRepository.GetByIdAsync(postId, cancellationToken)
             .ConfigureAwait(false);
 
         if (post == null)
@@ -178,8 +158,7 @@ public class PostService(
         post.Content = request.Content;
         post.UpdatedAt = DateTimeOffset.UtcNow;
 
-        _dbContext.Posts.Update(post);
-        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        post = await _postRepository.UpdateAsync(post, cancellationToken).ConfigureAwait(false);
 
         // Invalidate cache
         await _cacheService.RemoveAsync($"{PostCacheKeyPrefix}{postId}", cancellationToken).ConfigureAwait(false);
@@ -195,8 +174,7 @@ public class PostService(
     /// </summary>
     public async Task DeletePostAsync(Guid postId, Guid userId, CancellationToken cancellationToken = default)
     {
-        var post = await _dbContext.Posts
-            .FirstOrDefaultAsync(p => p.Id == postId, cancellationToken)
+        var post = await _postRepository.GetByIdAsync(postId, cancellationToken)
             .ConfigureAwait(false);
 
         if (post == null)
@@ -210,8 +188,7 @@ public class PostService(
             throw new UnauthorizedAccessException("You are not authorized to delete this post.");
         }
 
-        _dbContext.Posts.Remove(post);
-        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await _postRepository.DeleteAsync(post, cancellationToken).ConfigureAwait(false);
 
         // Invalidate cache
         await _cacheService.RemoveAsync($"{PostCacheKeyPrefix}{postId}", cancellationToken).ConfigureAwait(false);

@@ -3,7 +3,7 @@ namespace Udemy.Application.Services;
 using AutoMapper;
 using BC = BCrypt.Net.BCrypt;
 using Udemy.Application.DTOs;
-using Udemy.Domain.Data;
+using Udemy.Application.Repositories;
 using Udemy.Domain.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,13 +11,13 @@ using Microsoft.EntityFrameworkCore;
 /// Service implementation for authentication operations.
 /// </summary>
 public class AuthService(
-    AppDbContext dbContext,
+    IUserRepository userRepository,
     ITokenService tokenService,
     ICacheService cacheService,
     IMapper mapper,
     ILogger<AuthService> logger) : IAuthService
 {
-    private readonly AppDbContext _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+    private readonly IUserRepository _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
     private readonly ITokenService _tokenService = tokenService ?? throw new ArgumentNullException(nameof(tokenService));
     private readonly ICacheService _cacheService = cacheService ?? throw new ArgumentNullException(nameof(cacheService));
     private readonly IMapper _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
@@ -32,8 +32,7 @@ public class AuthService(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var existingUser = await _dbContext.Users
-            .FirstOrDefaultAsync(u => u.Username == request.Username, cancellationToken)
+        var existingUser = await _userRepository.GetByUsernameAsync(request.Username, cancellationToken)
             .ConfigureAwait(false);
 
         if (existingUser != null)
@@ -42,8 +41,7 @@ public class AuthService(
             throw new InvalidOperationException("Username already exists.");
         }
 
-        var existingEmail = await _dbContext.Users
-            .FirstOrDefaultAsync(u => u.Email == request.Email, cancellationToken)
+        var existingEmail = await _userRepository.GetByEmailAsync(request.Email, cancellationToken)
             .ConfigureAwait(false);
 
         if (existingEmail != null)
@@ -61,8 +59,7 @@ public class AuthService(
             Role = "User"
         };
 
-        _dbContext.Users.Add(user);
-        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        user = await _userRepository.AddAsync(user, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("User registered: {UserId} ({Username})", user.Id, user.Username);
 
@@ -76,8 +73,7 @@ public class AuthService(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var user = await _dbContext.Users
-            .FirstOrDefaultAsync(u => u.Username == request.Username, cancellationToken)
+        var user = await _userRepository.GetByUsernameAsync(request.Username, cancellationToken)
             .ConfigureAwait(false);
 
         if (user == null || !BC.Verify(request.Password, user.Password))
@@ -104,9 +100,7 @@ public class AuthService(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var refreshToken = await _dbContext.RefreshTokens
-            .Include(rt => rt.User)
-            .FirstOrDefaultAsync(rt => rt.Token == request.RefreshToken, cancellationToken)
+        var refreshToken = await _userRepository.GetRefreshTokenAsync(request.RefreshToken, cancellationToken)
             .ConfigureAwait(false);
 
         if (refreshToken == null || !refreshToken.IsValid)
@@ -134,17 +128,8 @@ public class AuthService(
     {
         ArgumentNullException.ThrowIfNull(refreshToken);
 
-        var token = await _dbContext.RefreshTokens
-            .FirstOrDefaultAsync(rt => rt.Token == refreshToken, cancellationToken)
+        await _userRepository.RevokeRefreshTokenAsync(refreshToken, cancellationToken)
             .ConfigureAwait(false);
-
-        if (token != null)
-        {
-            token.RevokedAt = DateTimeOffset.UtcNow;
-            _dbContext.RefreshTokens.Update(token);
-            await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogInformation("Refresh token revoked for user: {UserId}", token.UserId);
-        }
     }
 
     /// <summary>
@@ -159,8 +144,7 @@ public class AuthService(
             return cachedUser;
         }
 
-        var user = await _dbContext.Users
-            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken)
+        var user = await _userRepository.GetByIdAsync(userId, cancellationToken)
             .ConfigureAwait(false);
 
         if (user == null)
@@ -191,8 +175,7 @@ public class AuthService(
             ExpiresAt = DateTimeOffset.UtcNow.AddDays(7)
         };
 
-        _dbContext.RefreshTokens.Add(refreshToken);
-        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await _userRepository.AddRefreshTokenAsync(refreshToken, cancellationToken).ConfigureAwait(false);
 
         return new AuthResponse
         {

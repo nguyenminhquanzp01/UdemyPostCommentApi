@@ -3,7 +3,7 @@ namespace Udemy.Application.Services;
 using AutoMapper;
 using System.Text.Json;
 using Udemy.Application.DTOs;
-using Udemy.Domain.Data;
+using Udemy.Application.Repositories;
 using Udemy.Domain.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,12 +11,14 @@ using Microsoft.EntityFrameworkCore;
 /// Service implementation for comment operations.
 /// </summary>
 public class CommentService(
-    AppDbContext dbContext,
+    ICommentRepository commentRepository,
+    IPostRepository postRepository,
     ICacheService cacheService,
     IMapper mapper,
     ILogger<CommentService> logger) : ICommentService
 {
-    private readonly AppDbContext _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+    private readonly ICommentRepository _commentRepository = commentRepository ?? throw new ArgumentNullException(nameof(commentRepository));
+    private readonly IPostRepository _postRepository = postRepository ?? throw new ArgumentNullException(nameof(postRepository));
     private readonly ICacheService _cacheService = cacheService ?? throw new ArgumentNullException(nameof(cacheService));
     private readonly IMapper _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
     private readonly ILogger<CommentService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -31,8 +33,8 @@ public class CommentService(
         ArgumentNullException.ThrowIfNull(request);
 
         // Verify post exists
-        var postExists = await _dbContext.Posts.AnyAsync(p => p.Id == postId, cancellationToken).ConfigureAwait(false);
-        if (!postExists)
+        var postExists = await _postRepository.GetByIdAsync(postId, cancellationToken).ConfigureAwait(false);
+        if (postExists == null)
         {
             throw new InvalidOperationException("Post not found.");
         }
@@ -49,11 +51,9 @@ public class CommentService(
         // If this is a reply, validate parent comment and calculate depth
         if (request.ParentId.HasValue)
         {
-            var parentComment = await _dbContext.Comments
-                .FirstOrDefaultAsync(c => c.Id == request.ParentId && c.PostId == postId, cancellationToken)
-                .ConfigureAwait(false);
+            var parentComment = await _commentRepository.GetByIdAsync(request.ParentId.Value, cancellationToken).ConfigureAwait(false);
 
-            if (parentComment == null)
+            if (parentComment == null || parentComment.PostId != postId)
             {
                 throw new InvalidOperationException("Parent comment not found on this post.");
             }
@@ -66,8 +66,7 @@ public class CommentService(
             comment.Depth = parentComment.Depth + 1;
         }
 
-        _dbContext.Comments.Add(comment);
-        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        comment = await _commentRepository.AddAsync(comment, cancellationToken).ConfigureAwait(false);
 
         // Invalidate post cache
         await _cacheService.RemoveAsync($"post:{postId}", cancellationToken).ConfigureAwait(false);
@@ -82,12 +81,7 @@ public class CommentService(
     /// </summary>
     public async Task<CommentDto?> GetCommentAsync(Guid commentId, CancellationToken cancellationToken = default)
     {
-        var comment = await _dbContext.Comments
-            .Include(c => c.User)
-            .Include(c => c.Replies)
-            .ThenInclude(r => r.User)
-            .FirstOrDefaultAsync(c => c.Id == commentId, cancellationToken)
-            .ConfigureAwait(false);
+        var comment = await _commentRepository.GetWithDetailsAsync(commentId, cancellationToken).ConfigureAwait(false);
 
         if (comment == null)
         {
@@ -102,14 +96,7 @@ public class CommentService(
     /// </summary>
     public async Task<IList<CommentDto>> GetPostCommentsAsync(Guid postId, CancellationToken cancellationToken = default)
     {
-        var comments = await _dbContext.Comments
-            .Where(c => c.PostId == postId && c.ParentId == null)
-            .Include(c => c.User)
-            .Include(c => c.Replies)
-            .ThenInclude(r => r.User)
-            .OrderByDescending(c => c.CreatedAt)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        var comments = await _commentRepository.GetByPostIdAsync(postId, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Retrieved {CommentCount} top-level comments for post {PostId}", comments.Count, postId);
 
@@ -121,14 +108,7 @@ public class CommentService(
     /// </summary>
     public async Task<IList<CommentDto>> GetCommentRepliesAsync(Guid commentId, CancellationToken cancellationToken = default)
     {
-        var replies = await _dbContext.Comments
-            .Where(c => c.ParentId == commentId)
-            .Include(c => c.User)
-            .Include(c => c.Replies)
-            .ThenInclude(r => r.User)
-            .OrderByDescending(c => c.CreatedAt)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        var replies = await _commentRepository.GetRepliesAsync(commentId, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Retrieved {ReplyCount} replies for comment {CommentId}", replies.Count, commentId);
 
@@ -142,10 +122,7 @@ public class CommentService(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var comment = await _dbContext.Comments
-            .Include(c => c.User)
-            .FirstOrDefaultAsync(c => c.Id == commentId, cancellationToken)
-            .ConfigureAwait(false);
+        var comment = await _commentRepository.GetByIdAsync(commentId, cancellationToken).ConfigureAwait(false);
 
         if (comment == null)
         {
@@ -161,8 +138,7 @@ public class CommentService(
         comment.Content = request.Content;
         comment.UpdatedAt = DateTimeOffset.UtcNow;
 
-        _dbContext.Comments.Update(comment);
-        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        comment = await _commentRepository.UpdateAsync(comment, cancellationToken).ConfigureAwait(false);
 
         // Invalidate post cache
         await _cacheService.RemoveAsync($"post:{comment.PostId}", cancellationToken).ConfigureAwait(false);
@@ -177,9 +153,7 @@ public class CommentService(
     /// </summary>
     public async Task DeleteCommentAsync(Guid commentId, Guid userId, CancellationToken cancellationToken = default)
     {
-        var comment = await _dbContext.Comments
-            .FirstOrDefaultAsync(c => c.Id == commentId, cancellationToken)
-            .ConfigureAwait(false);
+        var comment = await _commentRepository.GetByIdAsync(commentId, cancellationToken).ConfigureAwait(false);
 
         if (comment == null)
         {
@@ -192,8 +166,7 @@ public class CommentService(
             throw new UnauthorizedAccessException("You are not authorized to delete this comment.");
         }
 
-        _dbContext.Comments.Remove(comment);
-        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await _commentRepository.DeleteAsync(comment, cancellationToken).ConfigureAwait(false);
 
         // Invalidate post cache
         await _cacheService.RemoveAsync($"post:{comment.PostId}", cancellationToken).ConfigureAwait(false);
@@ -217,22 +190,18 @@ public class CommentService(
         }
 
         // Verify post exists
-        var postExists = await _dbContext.Posts.AnyAsync(p => p.Id == postId, cancellationToken).ConfigureAwait(false);
-        if (!postExists)
+        var postExists = await _postRepository.GetByIdAsync(postId, cancellationToken).ConfigureAwait(false);
+        if (postExists == null)
         {
             throw new InvalidOperationException("Post not found.");
         }
 
         // Fetch all comments for the post with user information
-        var comments = await _dbContext.Comments
-            .Where(c => c.PostId == postId)
-            .Include(c => c.User)
-            .OrderBy(c => c.CreatedAt)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        var comments = await _commentRepository.GetByPostIdAsync(postId, cancellationToken).ConfigureAwait(false);
+        var commentsList = comments.ToList();
 
         // Build lookup keyed by ParentId (null for root comments)
-        var lookup = comments.ToLookup(c => c.ParentId);
+        var lookup = commentsList.ToLookup(c => c.ParentId);
 
         // Build tree recursively with cycle detection
         List<CommentTreeDto> BuildTree(Guid? parentId, HashSet<Guid>? ancestors = null)
@@ -279,7 +248,7 @@ public class CommentService(
         // Cache the tree for 5 minutes
         await _cacheService.SetAsync(cacheKey, tree, cancellationToken, TimeSpan.FromMinutes(5)).ConfigureAwait(false);
 
-        _logger.LogInformation("Comment tree for post {PostId} built and cached with {CommentCount} total comments", postId, comments.Count);
+        _logger.LogInformation("Comment tree for post {PostId} built and cached with {CommentCount} total comments", postId, commentsList.Count);
 
         return tree;
     }
