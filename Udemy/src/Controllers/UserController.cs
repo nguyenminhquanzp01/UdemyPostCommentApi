@@ -3,6 +3,7 @@ namespace Udemy.Controllers;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Udemy.Application.DTOs;
 using Udemy.Application.Services;
 
@@ -12,6 +13,7 @@ using Udemy.Application.Services;
 [ApiController]
 [Route("api/user")]
 [Authorize]
+[EnableRateLimiting("per-user")]
 public class UserController(
     IAuthService authService,
     IPostService postService,

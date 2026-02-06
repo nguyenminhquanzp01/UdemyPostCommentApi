@@ -3,6 +3,7 @@ namespace Udemy.Controllers;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Udemy.Application.DTOs;
 using Udemy.Application.Services;
 
@@ -11,6 +12,7 @@ using Udemy.Application.Services;
 /// </summary>
 [ApiController]
 [Route("api/comments")]
+[EnableRateLimiting("per-user")]
 public class CommentsController(
     ICommentService commentService,
     ILogger<CommentsController> logger) : ControllerBase
@@ -49,6 +51,7 @@ public class CommentsController(
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The updated comment.</returns>
     [HttpPut("{commentId}")]
+    [EnableRateLimiting("per-user")]
     [Authorize]
     public async Task<ActionResult<CommentDto>> UpdateComment(
         Guid commentId,
@@ -85,6 +88,7 @@ public class CommentsController(
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>No content.</returns>
     [HttpDelete("{commentId}")]
+    [EnableRateLimiting("per-user")]
     [Authorize]
     public async Task<IActionResult> DeleteComment(
         Guid commentId,

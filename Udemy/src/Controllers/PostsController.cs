@@ -3,6 +3,7 @@ namespace Udemy.Controllers;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Udemy.Application.DTOs;
 using Udemy.Application.Services;
 
@@ -11,6 +12,7 @@ using Udemy.Application.Services;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
+[EnableRateLimiting("per-ip")]
 public class PostsController(
     IPostService postService,
     ICommentService commentService,
@@ -83,6 +85,7 @@ public class PostsController(
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The created post.</returns>
     [HttpPost]
+    [EnableRateLimiting("per-user")]
     [Authorize]
     public async Task<ActionResult<PostDto>> CreatePost(
         [FromBody] CreatePostRequest request,
@@ -108,6 +111,7 @@ public class PostsController(
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The updated post.</returns>
     [HttpPut("{id}")]
+    [EnableRateLimiting("per-user")]
     [Authorize]
     public async Task<ActionResult<PostDto>> UpdatePost(
         Guid id,
@@ -144,6 +148,7 @@ public class PostsController(
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>No content.</returns>
     [HttpDelete("{id}")]
+    [EnableRateLimiting("per-user")]
     [Authorize]
     public async Task<IActionResult> DeletePost(
         Guid id,
@@ -179,6 +184,7 @@ public class PostsController(
     /// <param name="request">The create comment request.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The created comment.</returns>
+    [EnableRateLimiting("per-user")]
     [HttpPost("{postId}/comments")]
     [Authorize]
     public async Task<ActionResult<CommentDto>> CreateComment(

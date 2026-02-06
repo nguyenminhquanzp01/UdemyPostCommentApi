@@ -2,6 +2,7 @@ namespace Udemy.Controllers;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Udemy.Application.DTOs;
 using Udemy.Application.Services;
 
@@ -25,6 +26,7 @@ public class AuthController(
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The authentication response with tokens.</returns>
     [HttpPost("register")]
+    [EnableRateLimiting("auth-endpoints")]
     public async Task<ActionResult<AuthResponse>> Register(
         [FromBody] RegisterRequest request,
         CancellationToken cancellationToken)
@@ -49,6 +51,7 @@ public class AuthController(
     /// <param name="request">The login request.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The authentication response with tokens.</returns>
+    [EnableRateLimiting("auth-endpoints")]
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponse>> Login(
         [FromBody] LoginRequest request,
